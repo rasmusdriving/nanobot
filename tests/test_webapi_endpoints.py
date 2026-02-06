@@ -68,6 +68,7 @@ def _build_client(tmp_path: Path) -> tuple[TestClient, WebAPIState]:
         channels=None,
         workspace=workspace,
         gateway_port=18790,
+        config_path=tmp_path / 'config.json',
     )
     return TestClient(create_web_app(state)), state
 

@@ -18,6 +18,7 @@ class WebAPIState:
     channels: Any
     workspace: Path
     gateway_port: int
+    config_path: Path | None = None
     running_jobs: set[str] = field(default_factory=set)
 
     @property

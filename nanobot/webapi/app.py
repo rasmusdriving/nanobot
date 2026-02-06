@@ -217,7 +217,7 @@ def create_web_app(state: WebAPIState) -> FastAPI:
     @app.put("/api/v1/config", dependencies=[Depends(require_auth)])
     async def update_config(payload: ConfigUpdateRequest) -> dict[str, Any]:
         updated_config = build_updated_config(state.config, payload.config)
-        save_config(updated_config)
+        save_config(updated_config, config_path=state.config_path)
         state.config = updated_config
         return {"ok": True, "config": config_to_masked_payload(updated_config), "restartRequired": True}
 

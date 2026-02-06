@@ -178,7 +178,7 @@ def gateway(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ):
     """Start the nanobot gateway."""
-    from nanobot.config.loader import load_config, get_data_dir
+    from nanobot.config.loader import get_config_path, get_data_dir, load_config
     from nanobot.bus.queue import MessageBus
     from nanobot.providers.litellm_provider import LiteLLMProvider
     from nanobot.agent.loop import AgentLoop
@@ -296,6 +296,7 @@ def gateway(
             channels=channels,
             workspace=config.workspace_path,
             gateway_port=web_port,
+            config_path=get_config_path(),
         )
         web_app = create_web_app(web_state)
         uvicorn_config = UvicornConfig(
