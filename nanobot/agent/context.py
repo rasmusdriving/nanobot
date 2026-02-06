@@ -207,7 +207,8 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         self,
         messages: list[dict[str, Any]],
         content: str | None,
-        tool_calls: list[dict[str, Any]] | None = None
+        tool_calls: list[dict[str, Any]] | None = None,
+        assistant_message: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Add an assistant message to the message list.
@@ -216,14 +217,22 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             messages: Current message list.
             content: Message content.
             tool_calls: Optional tool calls.
+            assistant_message: Optional raw assistant message from provider.
         
         Returns:
             Updated message list.
         """
-        msg: dict[str, Any] = {"role": "assistant", "content": content or ""}
-        
-        if tool_calls:
-            msg["tool_calls"] = tool_calls
-        
+        if assistant_message:
+            msg = dict(assistant_message)
+            msg.setdefault("role", "assistant")
+            if msg.get("content") is None:
+                msg["content"] = ""
+            if tool_calls and not msg.get("tool_calls"):
+                msg["tool_calls"] = tool_calls
+        else:
+            msg = {"role": "assistant", "content": content or ""}
+            if tool_calls:
+                msg["tool_calls"] = tool_calls
+
         messages.append(msg)
         return messages

@@ -78,6 +78,7 @@ class ProvidersConfig(BaseModel):
     vllm: ProviderConfig = Field(default_factory=ProviderConfig)
     gemini: ProviderConfig = Field(default_factory=ProviderConfig)
     moonshot: ProviderConfig = Field(default_factory=ProviderConfig)
+    minimax: ProviderConfig = Field(default_factory=ProviderConfig)
 
 
 class GatewayConfig(BaseModel):
@@ -140,6 +141,8 @@ class Config(BaseSettings):
             "groq": self.providers.groq,
             "moonshot": self.providers.moonshot,
             "kimi": self.providers.moonshot,
+            "minimax": self.providers.minimax,
+            "codex-minimax": self.providers.minimax,
             "vllm": self.providers.vllm,
         }
         for keyword, provider in providers.items():
@@ -158,7 +161,8 @@ class Config(BaseSettings):
             self.providers.openrouter, self.providers.deepseek,
             self.providers.anthropic, self.providers.openai,
             self.providers.gemini, self.providers.zhipu,
-            self.providers.moonshot, self.providers.vllm,
+            self.providers.moonshot, self.providers.minimax,
+            self.providers.vllm,
             self.providers.groq,
         ]:
             if provider.api_key:
@@ -170,6 +174,10 @@ class Config(BaseSettings):
         model = (model or self.agents.defaults.model).lower()
         if "openrouter" in model:
             return self.providers.openrouter.api_base or "https://openrouter.ai/api/v1"
+        if "minimax" in model or "codex-minimax" in model:
+            if self.providers.minimax.api_key:
+                return self.providers.minimax.api_base or "https://api.minimax.io/v1"
+            return None
         if any(k in model for k in ("zhipu", "glm", "zai")):
             return self.providers.zhipu.api_base
         if "vllm" in model:

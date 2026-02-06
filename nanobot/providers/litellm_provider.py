@@ -17,53 +17,144 @@ class LiteLLMProvider(LLMProvider):
     a unified interface.
     """
     
+    MINIMAX_DEFAULT_API_BASE = "https://api.minimax.io/v1"
+
     def __init__(
-        self, 
-        api_key: str | None = None, 
+        self,
+        api_key: str | None = None,
         api_base: str | None = None,
-        default_model: str = "anthropic/claude-opus-4-5"
+        default_model: str = "anthropic/claude-opus-4-5",
     ):
         super().__init__(api_key, api_base)
         self.default_model = default_model
-        
-        # Detect OpenRouter by api_key prefix or explicit api_base
-        self.is_openrouter = (
-            (api_key and api_key.startswith("sk-or-")) or
-            (api_base and "openrouter" in api_base)
-        )
-        
-        # Track if using custom endpoint (vLLM, etc.)
-        self.is_vllm = bool(api_base) and not self.is_openrouter
-        
-        # Configure LiteLLM based on provider
-        if api_key:
-            if self.is_openrouter:
-                # OpenRouter mode - set key
-                os.environ["OPENROUTER_API_KEY"] = api_key
-            elif self.is_vllm:
-                # vLLM/custom endpoint - uses OpenAI-compatible API
-                os.environ["OPENAI_API_KEY"] = api_key
-            elif "deepseek" in default_model:
-                os.environ.setdefault("DEEPSEEK_API_KEY", api_key)
-            elif "anthropic" in default_model:
-                os.environ.setdefault("ANTHROPIC_API_KEY", api_key)
-            elif "openai" in default_model or "gpt" in default_model:
-                os.environ.setdefault("OPENAI_API_KEY", api_key)
-            elif "gemini" in default_model.lower():
-                os.environ.setdefault("GEMINI_API_KEY", api_key)
-            elif "zhipu" in default_model or "glm" in default_model or "zai" in default_model:
-                os.environ.setdefault("ZHIPUAI_API_KEY", api_key)
-            elif "groq" in default_model:
-                os.environ.setdefault("GROQ_API_KEY", api_key)
-            elif "moonshot" in default_model or "kimi" in default_model:
-                os.environ.setdefault("MOONSHOT_API_KEY", api_key)
-                os.environ.setdefault("MOONSHOT_API_BASE", api_base or "https://api.moonshot.cn/v1")
-        
+        self.model_provider = self._detect_model_provider(default_model)
+        self.is_openrouter = self._is_openrouter_mode(api_key, api_base)
+        self.is_vllm = self._is_vllm_mode(api_base)
+
+        self._configure_environment(api_key, api_base)
+
         if api_base:
             litellm.api_base = api_base
-        
+
         # Disable LiteLLM logging noise
         litellm.suppress_debug_info = True
+
+    @staticmethod
+    def _detect_model_provider(model: str) -> str:
+        """Infer provider from model naming conventions."""
+        model_lower = model.lower()
+        if "openrouter" in model_lower:
+            return "openrouter"
+        if "deepseek" in model_lower:
+            return "deepseek"
+        if "anthropic" in model_lower or "claude" in model_lower:
+            return "anthropic"
+        if "openai" in model_lower or "gpt" in model_lower:
+            return "openai"
+        if "gemini" in model_lower:
+            return "gemini"
+        if any(k in model_lower for k in ("zhipu", "glm", "zai")):
+            return "zhipu"
+        if "groq" in model_lower:
+            return "groq"
+        if "moonshot" in model_lower or "kimi" in model_lower:
+            return "moonshot"
+        if "minimax" in model_lower or "codex-minimax" in model_lower:
+            return "minimax"
+        if "bedrock" in model_lower:
+            return "bedrock"
+        if model_lower.startswith("hosted_vllm/"):
+            return "vllm"
+        return "unknown"
+
+    def _is_openrouter_mode(self, api_key: str | None, api_base: str | None) -> bool:
+        """Detect OpenRouter mode by model, key format, or endpoint."""
+        return bool(
+            self.model_provider == "openrouter"
+            or (api_key and api_key.startswith("sk-or-"))
+            or (api_base and "openrouter" in api_base.lower())
+        )
+
+    def _is_vllm_mode(self, api_base: str | None) -> bool:
+        """Treat custom API base as vLLM only for vLLM/unknown model providers."""
+        if not api_base or self.is_openrouter:
+            return False
+        return self.model_provider in {"vllm", "unknown"}
+
+    def _configure_environment(self, api_key: str | None, api_base: str | None) -> None:
+        """Set provider-specific env vars expected by LiteLLM."""
+        if not api_key:
+            return
+
+        if self.is_openrouter:
+            os.environ["OPENROUTER_API_KEY"] = api_key
+            return
+
+        if self.is_vllm:
+            os.environ["OPENAI_API_KEY"] = api_key
+            return
+
+        env_map = {
+            "deepseek": "DEEPSEEK_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+            "openai": "OPENAI_API_KEY",
+            "gemini": "GEMINI_API_KEY",
+            "zhipu": "ZHIPUAI_API_KEY",
+            "groq": "GROQ_API_KEY",
+            "moonshot": "MOONSHOT_API_KEY",
+            "minimax": "MINIMAX_API_KEY",
+        }
+        env_name = env_map.get(self.model_provider)
+        if env_name:
+            os.environ.setdefault(env_name, api_key)
+
+        if self.model_provider == "moonshot":
+            os.environ.setdefault("MOONSHOT_API_BASE", api_base or "https://api.moonshot.cn/v1")
+        if self.model_provider == "minimax":
+            os.environ.setdefault("MINIMAX_API_BASE", api_base or self.MINIMAX_DEFAULT_API_BASE)
+
+    def _normalize_model_name(self, model: str) -> str:
+        """Normalize model name to provider prefixes expected by LiteLLM."""
+        normalized = model
+        normalized_lower = normalized.lower()
+
+        if self.is_openrouter and not normalized.startswith("openrouter/"):
+            normalized = f"openrouter/{normalized}"
+            normalized_lower = normalized.lower()
+
+        if ("glm" in normalized_lower or "zhipu" in normalized_lower) and not (
+            normalized.startswith("zhipu/")
+            or normalized.startswith("zai/")
+            or normalized.startswith("openrouter/")
+        ):
+            normalized = f"zai/{normalized}"
+            normalized_lower = normalized.lower()
+
+        if ("moonshot" in normalized_lower or "kimi" in normalized_lower) and not (
+            normalized.startswith("moonshot/") or normalized.startswith("openrouter/")
+        ):
+            normalized = f"moonshot/{normalized}"
+            normalized_lower = normalized.lower()
+
+        if ("minimax" in normalized_lower or "codex-minimax" in normalized_lower) and not (
+            normalized.startswith("minimax/") or normalized.startswith("openrouter/")
+        ):
+            normalized = f"minimax/{normalized}"
+            normalized_lower = normalized.lower()
+
+        if "gemini" in normalized_lower and not normalized.startswith("gemini/"):
+            normalized = f"gemini/{normalized}"
+
+        if self.is_vllm and not normalized.startswith("hosted_vllm/"):
+            normalized = f"hosted_vllm/{normalized}"
+
+        return normalized
+
+    @staticmethod
+    def _is_minimax_model(model: str) -> bool:
+        """Check if a model should be treated as MiniMax."""
+        model_lower = model.lower()
+        return "minimax" in model_lower or "codex-minimax" in model_lower
     
     async def chat(
         self,
@@ -86,35 +177,7 @@ class LiteLLMProvider(LLMProvider):
         Returns:
             LLMResponse with content and/or tool calls.
         """
-        model = model or self.default_model
-        
-        # For OpenRouter, prefix model name if not already prefixed
-        if self.is_openrouter and not model.startswith("openrouter/"):
-            model = f"openrouter/{model}"
-        
-        # For Zhipu/Z.ai, ensure prefix is present
-        # Handle cases like "glm-4.7-flash" -> "zai/glm-4.7-flash"
-        if ("glm" in model.lower() or "zhipu" in model.lower()) and not (
-            model.startswith("zhipu/") or 
-            model.startswith("zai/") or 
-            model.startswith("openrouter/")
-        ):
-            model = f"zai/{model}"
-
-        # For Moonshot/Kimi, ensure moonshot/ prefix (before vLLM check)
-        if ("moonshot" in model.lower() or "kimi" in model.lower()) and not (
-            model.startswith("moonshot/") or model.startswith("openrouter/")
-        ):
-            model = f"moonshot/{model}"
-
-        # For Gemini, ensure gemini/ prefix if not already present
-        if "gemini" in model.lower() and not model.startswith("gemini/"):
-            model = f"gemini/{model}"
-
-        # For vLLM, use hosted_vllm/ prefix per LiteLLM docs
-        # Convert openai/ prefix to hosted_vllm/ if user specified it
-        if self.is_vllm:
-            model = f"hosted_vllm/{model}"
+        model = self._normalize_model_name(model or self.default_model)
         
         # kimi-k2.5 only supports temperature=1.0
         if "kimi-k2.5" in model.lower():
@@ -126,6 +189,10 @@ class LiteLLMProvider(LLMProvider):
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
+
+        # MiniMax M2.1 supports interleaved thinking when reasoning is split.
+        if self._is_minimax_model(model):
+            kwargs["reasoning_split"] = True
         
         # Pass api_base directly for custom endpoints (vLLM, etc.)
         if self.api_base:
@@ -149,6 +216,7 @@ class LiteLLMProvider(LLMProvider):
         """Parse LiteLLM response into our standard format."""
         choice = response.choices[0]
         message = choice.message
+        assistant_message = self._extract_assistant_message(message)
         
         tool_calls = []
         if hasattr(message, "tool_calls") and message.tool_calls:
@@ -181,7 +249,20 @@ class LiteLLMProvider(LLMProvider):
             tool_calls=tool_calls,
             finish_reason=choice.finish_reason or "stop",
             usage=usage,
+            assistant_message=assistant_message,
         )
+
+    def _extract_assistant_message(self, message: Any) -> dict[str, Any] | None:
+        """Extract provider-native assistant message payload."""
+        if hasattr(message, "model_dump"):
+            return message.model_dump(exclude_none=False)
+        if isinstance(message, dict):
+            return dict(message)
+        extracted: dict[str, Any] = {}
+        for key in ("role", "content", "tool_calls", "function_call", "provider_specific_fields"):
+            if hasattr(message, key):
+                extracted[key] = getattr(message, key)
+        return extracted or None
     
     def get_default_model(self) -> str:
         """Get the default model."""

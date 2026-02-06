@@ -211,7 +211,10 @@ class AgentLoop:
                     for tc in response.tool_calls
                 ]
                 messages = self.context.add_assistant_message(
-                    messages, response.content, tool_call_dicts
+                    messages,
+                    response.content,
+                    tool_call_dicts,
+                    assistant_message=response.assistant_message,
                 )
                 
                 # Execute tools
@@ -311,7 +314,10 @@ class AgentLoop:
                     for tc in response.tool_calls
                 ]
                 messages = self.context.add_assistant_message(
-                    messages, response.content, tool_call_dicts
+                    messages,
+                    response.content,
+                    tool_call_dicts,
+                    assistant_message=response.assistant_message,
                 )
                 
                 for tool_call in response.tool_calls:

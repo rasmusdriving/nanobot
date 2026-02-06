@@ -91,7 +91,7 @@ pip install nanobot-ai
 > [!TIP]
 > Set your API key in `~/.nanobot/config.json`.
 > Get API keys: [OpenRouter](https://openrouter.ai/keys) (LLM) · [Brave Search](https://brave.com/search/api/) (optional, for web search)
-> You can also change the model to `minimax/minimax-m2` for lower cost.
+> You can also use MiniMax coding plan with model `minimax/codex-MiniMax-M2.1`.
 
 **1. Initialize**
 
@@ -131,6 +131,34 @@ nanobot agent -m "What is 2+2?"
 ```
 
 That's it! You have a working AI assistant in 2 minutes.
+
+## 🧠 MiniMax Coding Plan (M2.1)
+
+Use MiniMax coding-plan auth directly (without OpenRouter).
+
+**1. Configure** (`~/.nanobot/config.json`)
+
+```json
+{
+  "providers": {
+    "minimax": {
+      "apiKey": "your-minimax-coding-plan-key",
+      "apiBase": "https://api.minimax.io/v1"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": "minimax/codex-MiniMax-M2.1"
+    }
+  }
+}
+```
+
+**2. Chat**
+
+```bash
+nanobot agent -m "Reply with exactly: minimax-ok"
+```
 
 ## 🖥️ Local Models (vLLM)
 
@@ -357,6 +385,7 @@ Config file: `~/.nanobot/config.json`
 | `anthropic` | LLM (Claude direct) | [console.anthropic.com](https://console.anthropic.com) |
 | `openai` | LLM (GPT direct) | [platform.openai.com](https://platform.openai.com) |
 | `deepseek` | LLM (DeepSeek direct) | [platform.deepseek.com](https://platform.deepseek.com) |
+| `minimax` | LLM (MiniMax direct, supports coding-plan with `codex-MiniMax-M2.1`) | [platform.minimaxi.com](https://platform.minimaxi.com) |
 | `groq` | LLM + **Voice transcription** (Whisper) | [console.groq.com](https://console.groq.com) |
 | `gemini` | LLM (Gemini direct) | [aistudio.google.com](https://aistudio.google.com) |
 

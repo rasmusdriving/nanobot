@@ -144,11 +144,13 @@ class SubagentManager:
                         }
                         for tc in response.tool_calls
                     ]
-                    messages.append({
-                        "role": "assistant",
-                        "content": response.content or "",
-                        "tool_calls": tool_call_dicts,
-                    })
+                    messages.append(
+                        self._build_assistant_tool_message(
+                            response.content,
+                            tool_call_dicts,
+                            response.assistant_message,
+                        )
+                    )
                     
                     # Execute tools
                     for tool_call in response.tool_calls:
@@ -175,6 +177,23 @@ class SubagentManager:
             error_msg = f"Error: {str(e)}"
             logger.error(f"Subagent [{task_id}] failed: {e}")
             await self._announce_result(task_id, label, task, error_msg, origin, "error")
+
+    @staticmethod
+    def _build_assistant_tool_message(
+        content: str | None,
+        tool_calls: list[dict[str, Any]],
+        assistant_message: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Build assistant message while preserving provider-specific fields."""
+        if assistant_message:
+            msg = dict(assistant_message)
+            msg.setdefault("role", "assistant")
+            if msg.get("content") is None:
+                msg["content"] = ""
+            if not msg.get("tool_calls"):
+                msg["tool_calls"] = tool_calls
+            return msg
+        return {"role": "assistant", "content": content or "", "tool_calls": tool_calls}
     
     async def _announce_result(
         self,
