@@ -413,6 +413,24 @@ Config file: `~/.nanobot/config.json`
 | `nanobot channels login` | Link WhatsApp (scan QR) |
 | `nanobot channels status` | Show channel status |
 
+## 🧭 Control Room (Web)
+
+Run the gateway, then open the local control room in your browser.
+
+```bash
+# optional: protect API/WS with bearer token
+export NANOBOT_WEB_TOKEN="your-local-token"
+
+# start gateway + control room (default: http://127.0.0.1:18790)
+nanobot gateway --port 18790
+```
+
+The control room provides:
+- Session browser + transcript viewer
+- Streaming command deck (WebSocket)
+- Cron and heartbeat management
+- Skill and config controls with masked secrets
+
 <details>
 <summary><b>Scheduled Tasks (Cron)</b></summary>
 

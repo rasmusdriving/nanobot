@@ -174,7 +174,7 @@ This file stores important information that should persist across sessions.
 
 @app.command()
 def gateway(
-    port: int = typer.Option(18790, "--port", "-p", help="Gateway port"),
+    port: int = typer.Option(18790, "--port", "-p", help="Control room web/API port"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ):
     """Start the nanobot gateway."""
@@ -186,12 +186,15 @@ def gateway(
     from nanobot.cron.service import CronService
     from nanobot.cron.types import CronJob
     from nanobot.heartbeat.service import HeartbeatService
+    from nanobot.webapi import WebAPIState, create_web_app
+    from uvicorn import Config as UvicornConfig
+    from uvicorn import Server as UvicornServer
     
     if verbose:
         import logging
         logging.basicConfig(level=logging.DEBUG)
     
-    console.print(f"{__logo__} Starting nanobot gateway on port {port}...")
+    console.print(f"{__logo__} Starting nanobot gateway...")
     
     config = load_config()
     
@@ -276,18 +279,53 @@ def gateway(
     if cron_status["jobs"] > 0:
         console.print(f"[green]✓[/green] Cron: {cron_status['jobs']} scheduled jobs")
     
-    console.print(f"[green]✓[/green] Heartbeat: every 30m")
+    console.print("[green]✓[/green] Heartbeat: every 30m")
+    
+    web_enabled = config.gateway.web_enabled
+    web_host = config.gateway.web_host
+    web_port = port or config.gateway.web_port
+    web_server: UvicornServer | None = None
+    
+    if web_enabled:
+        web_state = WebAPIState(
+            config=config,
+            bus=bus,
+            agent=agent,
+            cron=cron,
+            heartbeat=heartbeat,
+            channels=channels,
+            workspace=config.workspace_path,
+            gateway_port=web_port,
+        )
+        web_app = create_web_app(web_state)
+        uvicorn_config = UvicornConfig(
+            app=web_app,
+            host=web_host,
+            port=web_port,
+            log_level="warning",
+            loop="asyncio",
+        )
+        web_server = UvicornServer(config=uvicorn_config)
+        console.print(f"[green]✓[/green] Control room: http://{web_host}:{web_port}")
+        if web_state.auth_token:
+            console.print("[green]✓[/green] API auth token: enabled")
+        else:
+            console.print("[yellow]Warning:[/yellow] API auth token: disabled")
+    else:
+        console.print("[yellow]Warning:[/yellow] Control room disabled in config.gateway.webEnabled")
     
     async def run():
         try:
             await cron.start()
             await heartbeat.start()
-            await asyncio.gather(
-                agent.run(),
-                channels.start_all(),
-            )
+            tasks = [agent.run(), channels.start_all()]
+            if web_server:
+                tasks.append(web_server.serve())
+            await asyncio.gather(*tasks)
         except KeyboardInterrupt:
             console.print("\nShutting down...")
+            if web_server:
+                web_server.should_exit = True
             heartbeat.stop()
             cron.stop()
             agent.stop()
@@ -646,7 +684,7 @@ def cron_run(
         return await service.run_job(job_id, force=force)
     
     if asyncio.run(run()):
-        console.print(f"[green]✓[/green] Job executed")
+        console.print("[green]✓[/green] Job executed")
     else:
         console.print(f"[red]Failed to run job {job_id}[/red]")
 

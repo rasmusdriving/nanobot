@@ -85,6 +85,11 @@ class GatewayConfig(BaseModel):
     """Gateway/server configuration."""
     host: str = "0.0.0.0"
     port: int = 18790
+    web_enabled: bool = True
+    web_host: str = "127.0.0.1"
+    web_port: int = 18790
+    web_token: str = ""
+    web_max_heartbeat_file_bytes: int = 20000
 
 
 class WebSearchConfig(BaseModel):

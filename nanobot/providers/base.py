@@ -1,6 +1,7 @@
 """Base LLM provider interface."""
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -61,6 +62,25 @@ class LLMProvider(ABC):
         
         Returns:
             LLMResponse with content and/or tool calls.
+        """
+        pass
+
+    @abstractmethod
+    async def chat_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        model: str | None = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """
+        Stream chat completion events.
+
+        Yields dict events with:
+        - {"type": "delta", "text": "..."}
+        - {"type": "done", "response": LLMResponse}
+        - {"type": "error", "message": "..."} on recoverable errors.
         """
         pass
     

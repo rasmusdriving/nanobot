@@ -1,25 +1,34 @@
 """Agent loop: the core processing engine."""
 
+from __future__ import annotations
+
 import asyncio
 import json
+import uuid
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
+from nanobot.agent.context import ContextBuilder
+from nanobot.agent.stream_runner import stream_direct_response
+from nanobot.agent.subagent import SubagentManager
+from nanobot.agent.tools.cron import CronTool
+from nanobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
+from nanobot.agent.tools.message import MessageTool
+from nanobot.agent.tools.registry import ToolRegistry
+from nanobot.agent.tools.shell import ExecTool
+from nanobot.agent.tools.spawn import SpawnTool
+from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
+from nanobot.config.schema import ExecToolConfig
 from nanobot.providers.base import LLMProvider
-from nanobot.agent.context import ContextBuilder
-from nanobot.agent.tools.registry import ToolRegistry
-from nanobot.agent.tools.filesystem import ReadFileTool, WriteFileTool, EditFileTool, ListDirTool
-from nanobot.agent.tools.shell import ExecTool
-from nanobot.agent.tools.web import WebSearchTool, WebFetchTool
-from nanobot.agent.tools.message import MessageTool
-from nanobot.agent.tools.spawn import SpawnTool
-from nanobot.agent.tools.cron import CronTool
-from nanobot.agent.subagent import SubagentManager
 from nanobot.session.manager import SessionManager
+
+if TYPE_CHECKING:
+    from nanobot.cron.service import CronService
 
 
 class AgentLoop:
@@ -46,8 +55,6 @@ class AgentLoop:
         cron_service: "CronService | None" = None,
         restrict_to_workspace: bool = False,
     ):
-        from nanobot.config.schema import ExecToolConfig
-        from nanobot.cron.service import CronService
         self.bus = bus
         self.provider = provider
         self.workspace = workspace
@@ -72,6 +79,7 @@ class AgentLoop:
         )
         
         self._running = False
+        self._cancelled_run_ids: set[str] = set()
         self._register_default_tools()
     
     def _register_default_tools(self) -> None:
@@ -373,3 +381,35 @@ class AgentLoop:
         
         response = await self._process_message(msg)
         return response.content if response else ""
+
+    async def process_direct_stream(
+        self,
+        content: str,
+        session_key: str = "cli:direct",
+        channel: str = "cli",
+        chat_id: str = "direct",
+        run_id: str | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Process a direct message and stream events."""
+        rid = run_id or uuid.uuid4().hex[:10]
+        async for event in stream_direct_response(
+            self,
+            content=content,
+            session_key=session_key,
+            channel=channel,
+            chat_id=chat_id,
+            run_id=rid,
+        ):
+            yield event
+
+    def cancel_stream_run(self, run_id: str) -> None:
+        """Mark a stream run as cancelled."""
+        self._cancelled_run_ids.add(run_id)
+
+    def is_stream_run_cancelled(self, run_id: str) -> bool:
+        """Check whether a stream run has been cancelled."""
+        return run_id in self._cancelled_run_ids
+
+    def clear_stream_run(self, run_id: str) -> None:
+        """Clear stream run state."""
+        self._cancelled_run_ids.discard(run_id)

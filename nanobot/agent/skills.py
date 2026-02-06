@@ -23,17 +23,70 @@ class SkillsLoader:
         self.workspace_skills = workspace / "skills"
         self.builtin_skills = builtin_skills_dir or BUILTIN_SKILLS_DIR
     
-    def list_skills(self, filter_unavailable: bool = True) -> list[dict[str, str]]:
+    @property
+    def settings_path(self) -> Path:
+        """Path to persisted skill settings."""
+        return self.workspace_skills / "skills.config.json"
+    
+    def get_skill_settings(self) -> dict[str, dict[str, bool | None]]:
+        """Load persisted skill settings."""
+        if not self.settings_path.exists():
+            return {}
+        try:
+            data = json.loads(self.settings_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+        raw_skills = data.get("skills", {})
+        if not isinstance(raw_skills, dict):
+            return {}
+        settings: dict[str, dict[str, bool | None]] = {}
+        for name, value in raw_skills.items():
+            if not isinstance(value, dict):
+                continue
+            enabled = value.get("enabled")
+            always = value.get("always")
+            settings[name] = {
+                "enabled": enabled if isinstance(enabled, bool) else True,
+                "always": always if isinstance(always, bool) else None,
+            }
+        return settings
+    
+    def save_skill_settings(
+        self, settings: dict[str, dict[str, bool | None]]
+    ) -> dict[str, dict[str, bool | None]]:
+        """Persist skill settings and return the canonical form."""
+        canonical: dict[str, dict[str, bool | None]] = {}
+        for name, value in settings.items():
+            if not isinstance(name, str) or not isinstance(value, dict):
+                continue
+            enabled = value.get("enabled")
+            always = value.get("always")
+            canonical[name] = {
+                "enabled": enabled if isinstance(enabled, bool) else True,
+                "always": always if isinstance(always, bool) else None,
+            }
+        self.workspace_skills.mkdir(parents=True, exist_ok=True)
+        payload = {"skills": canonical}
+        self.settings_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return canonical
+
+    def list_skills(
+        self,
+        filter_unavailable: bool = True,
+        include_disabled: bool = False,
+    ) -> list[dict[str, str | bool | None]]:
         """
         List all available skills.
         
         Args:
             filter_unavailable: If True, filter out skills with unmet requirements.
+            include_disabled: If True, include disabled skills.
         
         Returns:
             List of skill info dicts with 'name', 'path', 'source'.
         """
         skills = []
+        settings = self.get_skill_settings()
         
         # Workspace skills (highest priority)
         if self.workspace_skills.exists():
@@ -41,7 +94,13 @@ class SkillsLoader:
                 if skill_dir.is_dir():
                     skill_file = skill_dir / "SKILL.md"
                     if skill_file.exists():
-                        skills.append({"name": skill_dir.name, "path": str(skill_file), "source": "workspace"})
+                        skills.append({
+                            "name": skill_dir.name,
+                            "path": str(skill_file),
+                            "source": "workspace",
+                            "enabled": settings.get(skill_dir.name, {}).get("enabled", True),
+                            "always": settings.get(skill_dir.name, {}).get("always"),
+                        })
         
         # Built-in skills
         if self.builtin_skills and self.builtin_skills.exists():
@@ -49,7 +108,16 @@ class SkillsLoader:
                 if skill_dir.is_dir():
                     skill_file = skill_dir / "SKILL.md"
                     if skill_file.exists() and not any(s["name"] == skill_dir.name for s in skills):
-                        skills.append({"name": skill_dir.name, "path": str(skill_file), "source": "builtin"})
+                        skills.append({
+                            "name": skill_dir.name,
+                            "path": str(skill_file),
+                            "source": "builtin",
+                            "enabled": settings.get(skill_dir.name, {}).get("enabled", True),
+                            "always": settings.get(skill_dir.name, {}).get("always"),
+                        })
+        
+        if not include_disabled:
+            skills = [s for s in skills if s.get("enabled", True)]
         
         # Filter by requirements
         if filter_unavailable:
@@ -108,7 +176,7 @@ class SkillsLoader:
         Returns:
             XML-formatted skills summary.
         """
-        all_skills = self.list_skills(filter_unavailable=False)
+        all_skills = self.list_skills(filter_unavailable=False, include_disabled=True)
         if not all_skills:
             return ""
         
@@ -121,12 +189,14 @@ class SkillsLoader:
             path = s["path"]
             desc = escape_xml(self._get_skill_description(s["name"]))
             skill_meta = self._get_skill_meta(s["name"])
-            available = self._check_requirements(skill_meta)
+            enabled = bool(s.get("enabled", True))
+            available = enabled and self._check_requirements(skill_meta)
             
             lines.append(f"  <skill available=\"{str(available).lower()}\">")
             lines.append(f"    <name>{name}</name>")
             lines.append(f"    <description>{desc}</description>")
             lines.append(f"    <location>{path}</location>")
+            lines.append(f"    <enabled>{str(enabled).lower()}</enabled>")
             
             # Show missing requirements for unavailable skills
             if not available:
@@ -134,7 +204,7 @@ class SkillsLoader:
                 if missing:
                     lines.append(f"    <requires>{escape_xml(missing)}</requires>")
             
-            lines.append(f"  </skill>")
+            lines.append("  </skill>")
         lines.append("</skills>")
         
         return "\n".join(lines)
@@ -192,11 +262,15 @@ class SkillsLoader:
     
     def get_always_skills(self) -> list[str]:
         """Get skills marked as always=true that meet requirements."""
+        settings = self.get_skill_settings()
         result = []
         for s in self.list_skills(filter_unavailable=True):
             meta = self.get_skill_metadata(s["name"]) or {}
             skill_meta = self._parse_nanobot_metadata(meta.get("metadata", ""))
-            if skill_meta.get("always") or meta.get("always"):
+            override = settings.get(s["name"], {}).get("always")
+            if override is True:
+                result.append(s["name"])
+            elif override is None and (skill_meta.get("always") or meta.get("always")):
                 result.append(s["name"])
         return result
     

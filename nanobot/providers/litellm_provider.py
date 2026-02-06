@@ -1,22 +1,20 @@
 """LiteLLM provider implementation for multi-provider support."""
 
 import os
+import json
+from collections.abc import AsyncIterator
 from typing import Any
 
 import litellm
 from litellm import acompletion
 
 from nanobot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
+from nanobot.providers.litellm_stream import consume_litellm_stream
 
 
 class LiteLLMProvider(LLMProvider):
-    """
-    LLM provider using LiteLLM for multi-provider support.
-    
-    Supports OpenRouter, Anthropic, OpenAI, Gemini, and many other providers through
-    a unified interface.
-    """
-    
+    """LLM provider using LiteLLM for multi-provider support."""
+
     MINIMAX_DEFAULT_API_BASE = "https://api.minimax.io/v1"
 
     def __init__(
@@ -30,12 +28,9 @@ class LiteLLMProvider(LLMProvider):
         self.model_provider = self._detect_model_provider(default_model)
         self.is_openrouter = self._is_openrouter_mode(api_key, api_base)
         self.is_vllm = self._is_vllm_mode(api_base)
-
         self._configure_environment(api_key, api_base)
-
         if api_base:
             litellm.api_base = api_base
-
         # Disable LiteLLM logging noise
         litellm.suppress_debug_info = True
 
@@ -211,6 +206,40 @@ class LiteLLMProvider(LLMProvider):
                 content=f"Error calling LLM: {str(e)}",
                 finish_reason="error",
             )
+
+    async def chat_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        model: str | None = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Stream chat completion events."""
+        model = self._normalize_model_name(model or self.default_model)
+        if "kimi-k2.5" in model.lower():
+            temperature = 1.0
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        if self._is_minimax_model(model):
+            kwargs["reasoning_split"] = True
+        if self.api_base:
+            kwargs["api_base"] = self.api_base
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+        try:
+            stream = await acompletion(**kwargs)
+            async for event in consume_litellm_stream(stream):
+                yield event
+        except Exception as e:
+            yield {"type": "error", "message": str(e)}
     
     def _parse_response(self, response: Any) -> LLMResponse:
         """Parse LiteLLM response into our standard format."""
@@ -224,7 +253,6 @@ class LiteLLMProvider(LLMProvider):
                 # Parse arguments from JSON string if needed
                 args = tc.function.arguments
                 if isinstance(args, str):
-                    import json
                     try:
                         args = json.loads(args)
                     except json.JSONDecodeError:
