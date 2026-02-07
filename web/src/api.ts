@@ -4,12 +4,40 @@ function authHeaders(token: string): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function isHtmlResponse(response: Response): boolean {
+  const contentType = response.headers.get('content-type') ?? '';
+  return contentType.includes('text/html');
+}
+
+function invalidJsonError(method: string, path: string, response: Response): Error {
+  if (isHtmlResponse(response)) {
+    return new Error('API returned HTML instead of JSON. Start the backend and verify the /api/v1 proxy.');
+  }
+  return new Error(`${method} ${path} returned invalid JSON`);
+}
+
+async function parseJsonBody<T>(response: Response, method: string, path: string): Promise<T> {
+  const raw = await response.text();
+  if (!raw.trim()) {
+    return {} as T;
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    throw invalidJsonError(method, path, response);
+  }
+}
+
+async function ensureJsonResponse<T>(response: Response, method: string, path: string): Promise<T> {
+  if (!response.ok) {
+    throw new Error(`${method} ${path} failed: ${response.status}`);
+  }
+  return parseJsonBody<T>(response, method, path);
+}
+
 export async function apiGet<T>(path: string, token: string): Promise<T> {
   const response = await fetch(`${API_PREFIX}${path}`, { headers: authHeaders(token) });
-  if (!response.ok) {
-    throw new Error(`GET ${path} failed: ${response.status}`);
-  }
-  return response.json() as Promise<T>;
+  return ensureJsonResponse<T>(response, 'GET', path);
 }
 
 export async function apiDelete<T>(path: string, token: string): Promise<T> {
@@ -17,10 +45,7 @@ export async function apiDelete<T>(path: string, token: string): Promise<T> {
     method: 'DELETE',
     headers: authHeaders(token),
   });
-  if (!response.ok) {
-    throw new Error(`DELETE ${path} failed: ${response.status}`);
-  }
-  return response.json() as Promise<T>;
+  return ensureJsonResponse<T>(response, 'DELETE', path);
 }
 
 export async function apiPost<T>(path: string, token: string, body?: unknown): Promise<T> {
@@ -32,10 +57,7 @@ export async function apiPost<T>(path: string, token: string, body?: unknown): P
     },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!response.ok) {
-    throw new Error(`POST ${path} failed: ${response.status}`);
-  }
-  return response.json() as Promise<T>;
+  return ensureJsonResponse<T>(response, 'POST', path);
 }
 
 export async function apiPut<T>(path: string, token: string, body: unknown): Promise<T> {
@@ -47,10 +69,7 @@ export async function apiPut<T>(path: string, token: string, body: unknown): Pro
     },
     body: JSON.stringify(body),
   });
-  if (!response.ok) {
-    throw new Error(`PUT ${path} failed: ${response.status}`);
-  }
-  return response.json() as Promise<T>;
+  return ensureJsonResponse<T>(response, 'PUT', path);
 }
 
 export async function apiPatch<T>(path: string, token: string, body: unknown): Promise<T> {
@@ -62,10 +81,7 @@ export async function apiPatch<T>(path: string, token: string, body: unknown): P
     },
     body: JSON.stringify(body),
   });
-  if (!response.ok) {
-    throw new Error(`PATCH ${path} failed: ${response.status}`);
-  }
-  return response.json() as Promise<T>;
+  return ensureJsonResponse<T>(response, 'PATCH', path);
 }
 
 export function createWs(token: string): WebSocket {

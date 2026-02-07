@@ -1,263 +1,237 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { apiDelete, apiGet, apiPatch, apiPost, apiPut, createWs } from './api';
-import { CommandDeck } from './components/CommandDeck';
-import { ConfigPanel } from './components/ConfigPanel';
-import { DiagnosticsPanel } from './components/DiagnosticsPanel';
-import { HeartbeatPanel } from './components/HeartbeatPanel';
-import { SchedulesPanel } from './components/SchedulesPanel';
-import { SessionsPanel } from './components/SessionsPanel';
-import { Shell } from './components/Shell';
-import { SkillsPanel } from './components/SkillsPanel';
-import type { CronJob, SessionDetail, SessionSummary, SkillItem, ViewKey, WsServerEvent } from './types';
+import { ChatComposer } from './features/chat/ChatComposer';
+import { ChatTranscript } from './features/chat/ChatTranscript';
+import { ThreadRail } from './features/chat/ThreadRail';
+import { selectRunMessagesForSession, useControlRoomState } from './features/control-room/useControlRoomState';
+import { UtilityDrawer } from './features/ops/UtilityDrawer';
+import { TokenPopover } from './features/topbar/TokenPopover';
+import type { DrawerPanelKey } from './types';
+
+const DESKTOP_UTILITIES_BREAKPOINT = 1200;
+
+function isDesktopViewport(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  return window.innerWidth >= DESKTOP_UTILITIES_BREAKPOINT;
+}
 
 function App() {
-  const [view, setView] = useState<ViewKey>('command');
-  const [token, setToken] = useState(localStorage.getItem('pobot_web_token') ?? '');
-  const [tokenInput, setTokenInput] = useState(token);
-  const [status, setStatus] = useState<Record<string, unknown>>({});
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [sessionDetail, setSessionDetail] = useState<SessionDetail | null>(null);
-  const [cronJobs, setCronJobs] = useState<CronJob[]>([]);
-  const [heartbeat, setHeartbeat] = useState({ content: '', intervalSeconds: 1800 });
-  const [skills, setSkills] = useState<SkillItem[]>([]);
-  const [config, setConfig] = useState<Record<string, unknown>>({});
-  const [events, setEvents] = useState<WsServerEvent[]>([]);
-  const [connected, setConnected] = useState(false);
-  const [notice, setNotice] = useState('');
-  const wsRef = useRef<WebSocket | null>(null);
+  const state = useControlRoomState();
 
-  const queueDepth = useMemo(() => {
-    const queues = (status.queues as Record<string, number>) ?? {};
-    return (queues.inbound ?? 0) + (queues.outbound ?? 0);
-  }, [status]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerExpanded, setDrawerExpanded] = useState(false);
+  const [drawerPanel, setDrawerPanel] = useState<DrawerPanelKey>('overview');
+  const [threadRailOpen, setThreadRailOpen] = useState(false);
+  const [showTokenPopover, setShowTokenPopover] = useState(false);
+  const [desktopViewport, setDesktopViewport] = useState(isDesktopViewport);
+  const utilitiesButtonRef = useRef<HTMLButtonElement>(null);
+  const tokenButtonRef = useRef<HTMLButtonElement>(null);
+
+  const runMessages = useMemo(
+    () => selectRunMessagesForSession(state.runs, state.selectedSessionKey),
+    [state.runs, state.selectedSessionKey],
+  );
+
+  const activeRunId = state.runs.activeRunBySession[state.selectedSessionKey] ?? null;
+  const desktopUtilitiesMode = drawerOpen && desktopViewport;
 
   useEffect(() => {
-    localStorage.setItem('pobot_web_token', token);
-    const socket = createWs(token);
-    wsRef.current = socket;
-    socket.onopen = () => setConnected(true);
-    socket.onclose = () => setConnected(false);
-    socket.onmessage = (message) => {
-      try {
-        const event = JSON.parse(message.data) as WsServerEvent;
-        setEvents((prev) => [...prev.slice(-299), event]);
-        if (event.type === 'session.updated') {
-          void loadSessions();
-        }
-      } catch (_error) {
-        setNotice('WS message parse error');
-      }
-    };
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const handleResize = () => setDesktopViewport(isDesktopViewport());
+    window.addEventListener('resize', handleResize);
     return () => {
-      socket.close();
-      wsRef.current = null;
+      window.removeEventListener('resize', handleResize);
     };
-  }, [token]);
+  }, []);
 
   useEffect(() => {
-    void refreshAll();
-  }, [token]);
-
-  async function refreshAll() {
-    await Promise.all([loadStatus(), loadSessions(), loadCronJobs(), loadHeartbeat(), loadSkills(), loadConfig()]);
-  }
-
-  async function loadStatus() {
-    try {
-      const data = await apiGet<{ [key: string]: unknown }>('/status', token);
-      setStatus(data);
-    } catch (error) {
-      setNotice((error as Error).message);
+    if (!desktopUtilitiesMode) {
+      return;
     }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || showTokenPopover) {
+        return;
+      }
+      event.preventDefault();
+      setDrawerOpen(false);
+      utilitiesButtonRef.current?.focus();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [desktopUtilitiesMode, showTokenPopover]);
+
+  function closeTokenPopover() {
+    setShowTokenPopover(false);
   }
 
-  async function loadSessions() {
-    try {
-      const data = await apiGet<{ sessions: SessionSummary[] }>('/sessions', token);
-      setSessions(data.sessions);
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
+  function toggleThreadRail() {
+    setThreadRailOpen((value) => !value);
+    setDrawerOpen(false);
+    closeTokenPopover();
   }
 
-  async function openSession(key: string) {
-    try {
-      const data = await apiGet<SessionDetail>(`/sessions/${encodeURIComponent(key)}`, token);
-      setSessionDetail(data);
-      wsRef.current?.send(JSON.stringify({ type: 'session.subscribe', session_key: key }));
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
+  function openDrawer(panel: DrawerPanelKey) {
+    setThreadRailOpen(false);
+    setDrawerPanel(panel);
+    setDrawerOpen((value) => (panel === drawerPanel ? !value : true));
+    closeTokenPopover();
   }
 
-  async function deleteSession(key: string) {
-    try {
-      await apiDelete(`/sessions/${encodeURIComponent(key)}`, token);
-      setSessionDetail((current) => (current?.key === key ? null : current));
-      await loadSessions();
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
+  function closeDrawer() {
+    setDrawerOpen(false);
+    utilitiesButtonRef.current?.focus();
   }
 
-  async function loadCronJobs() {
-    try {
-      const data = await apiGet<{ jobs: CronJob[] }>('/cron/jobs', token);
-      setCronJobs(data.jobs);
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
+  function handleSessionSelect(sessionKey: string) {
+    state.setSelectedSessionKey(sessionKey);
+    setThreadRailOpen(false);
+    closeTokenPopover();
   }
 
-  async function loadHeartbeat() {
-    try {
-      const data = await apiGet<{ content: string; intervalSeconds: number }>('/heartbeat', token);
-      setHeartbeat({ content: data.content, intervalSeconds: data.intervalSeconds });
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
+  function handleSend(content: string, sessionKey: string) {
+    state.setSelectedSessionKey(sessionKey);
+    state.sendChat(content, sessionKey);
   }
-
-  async function loadSkills() {
-    try {
-      const data = await apiGet<{ skills: SkillItem[] }>('/skills', token);
-      setSkills(data.skills);
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
-  }
-
-  async function loadConfig() {
-    try {
-      const data = await apiGet<{ config: Record<string, unknown> }>('/config', token);
-      setConfig(data.config);
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
-  }
-
-  function sendChat(payload: { content: string; session_key: string; channel: string; chat_id: string }) {
-    wsRef.current?.send(JSON.stringify({ type: 'chat.send', ...payload }));
-  }
-
-  function cancelRun(runId: string) {
-    wsRef.current?.send(JSON.stringify({ type: 'chat.cancel', run_id: runId }));
-  }
-
-  async function createCron(payload: Record<string, unknown>) {
-    try {
-      await apiPost('/cron/jobs', token, payload);
-      await loadCronJobs();
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
-  }
-
-  async function patchCron(id: string, payload: Record<string, unknown>) {
-    try {
-      await apiPatch(`/cron/jobs/${id}`, token, payload);
-      await loadCronJobs();
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
-  }
-
-  async function runCron(id: string) {
-    try {
-      await apiPost(`/cron/jobs/${id}/run`, token, {});
-      await loadCronJobs();
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
-  }
-
-  async function removeCron(id: string) {
-    try {
-      await apiDelete(`/cron/jobs/${id}`, token);
-      await loadCronJobs();
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
-  }
-
-  async function saveHeartbeat(content: string) {
-    try {
-      await apiPut('/heartbeat/file', token, { content });
-      await loadHeartbeat();
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
-  }
-
-  async function triggerHeartbeat() {
-    try {
-      const response = await apiPost<{ response?: string }>('/heartbeat/trigger', token, {});
-      setNotice(`Heartbeat response: ${response.response ?? '(empty)'}`);
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
-  }
-
-  async function saveSkills(settings: Record<string, { enabled: boolean; always: boolean | null }>) {
-    try {
-      await apiPut('/skills/settings', token, { skills: settings });
-      await loadSkills();
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
-  }
-
-  async function saveConfig(nextConfig: Record<string, unknown>) {
-    try {
-      const data = await apiPut<{ config: Record<string, unknown> }>('/config', token, { config: nextConfig });
-      setConfig(data.config);
-      setNotice('Config saved. Restart required for provider/channel changes.');
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
-  }
-
-  const activeRuns = Number(status.activeRuns ?? 0);
 
   return (
-    <>
-      <Shell
-        view={view}
-        onChangeView={setView}
-        activeRuns={activeRuns}
-        queueDepth={queueDepth}
-        cronJobs={cronJobs.length}
-      >
-        <section className="token-bar">
-          <label>
-            API Token
-            <input value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} placeholder="Optional bearer token" />
-          </label>
-          <button className="btn" onClick={() => setToken(tokenInput)}>
-            Apply Token
-          </button>
-          <button className="btn" onClick={() => void refreshAll()}>
-            Reload All
-          </button>
-          {notice ? <p className="notice">{notice}</p> : null}
-        </section>
+    <div className="cr-app">
+      <div className="background-glow" aria-hidden="true" />
 
-        {view === 'command' ? <CommandDeck connected={connected} events={events} onSend={sendChat} onCancel={cancelRun} /> : null}
-        {view === 'sessions' ? (
-          <SessionsPanel sessions={sessions} detail={sessionDetail} onRefresh={() => void loadSessions()} onOpen={openSession} onDelete={deleteSession} />
-        ) : null}
-        {view === 'schedules' ? (
-          <SchedulesPanel jobs={cronJobs} onRefresh={() => void loadCronJobs()} onCreate={createCron} onPatch={patchCron} onRun={runCron} onDelete={removeCron} />
-        ) : null}
-        {view === 'heartbeat' ? (
-          <HeartbeatPanel content={heartbeat.content} intervalSeconds={heartbeat.intervalSeconds} onSave={saveHeartbeat} onTrigger={triggerHeartbeat} />
-        ) : null}
-        {view === 'skills' ? <SkillsPanel skills={skills} onSave={saveSkills} /> : null}
-        {view === 'config' ? <ConfigPanel maskedConfig={config} onSave={saveConfig} /> : null}
-        {view === 'diagnostics' ? <DiagnosticsPanel status={status} onRefresh={() => void loadStatus()} /> : null}
-      </Shell>
-    </>
+      <header className="topbar">
+        <div className="brand-row">
+          <span className="brand-badge">P</span>
+          <div>
+            <p className="eyebrow">Pobot</p>
+            <h1>Control Room</h1>
+          </div>
+        </div>
+
+        <div className="chip-row">
+          <span className={state.connection === 'connected' ? 'chip chip-ok' : 'chip chip-warn'}>{state.connection}</span>
+          <span className="chip">runs {state.activeRuns}</span>
+          <span className="chip">queue {state.queueDepth}</span>
+          <span className="chip">cron {state.cronJobs.length}</span>
+        </div>
+
+        <div className="topbar-actions">
+          <button className="ghost-btn" onClick={toggleThreadRail} aria-pressed={threadRailOpen} disabled={desktopUtilitiesMode}>
+            Threads
+          </button>
+          <button ref={utilitiesButtonRef} className="ghost-btn" onClick={() => openDrawer('overview')} aria-pressed={drawerOpen}>
+            Utilities
+          </button>
+
+          <div className="token-wrap">
+            <button
+              ref={tokenButtonRef}
+              className="ghost-btn"
+              aria-expanded={showTokenPopover}
+              aria-haspopup="dialog"
+              aria-controls="token-popover"
+              onClick={() => setShowTokenPopover((value) => !value)}
+            >
+              Token
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <TokenPopover
+        open={showTokenPopover}
+        anchorRef={tokenButtonRef}
+        tokenDraft={state.tokenDraft}
+        onTokenDraftChange={state.setTokenDraft}
+        onApply={() => {
+          state.applyToken();
+          closeTokenPopover();
+        }}
+        onReload={() => void state.refreshAll()}
+        onClose={closeTokenPopover}
+      />
+
+      {state.notice ? (
+        <aside className="notice-banner" role="status">
+          <p>{state.notice}</p>
+          <button className="icon-btn" onClick={state.clearNotice} aria-label="Dismiss notice">
+            ✕
+          </button>
+        </aside>
+      ) : null}
+
+      <div className={`workspace-grid ${drawerOpen ? 'drawer-open' : ''} ${desktopUtilitiesMode ? 'desktop-utilities-mode' : ''}`}>
+        <ThreadRail
+          sessions={state.sessions}
+          activeSessionKey={state.selectedSessionKey}
+          onSelect={handleSessionSelect}
+          onDelete={(key) => void state.deleteSession(key)}
+          onRefresh={() => void state.refreshSessions()}
+          onCreateThread={() => {
+            state.createThread();
+            setThreadRailOpen(false);
+          }}
+          open={threadRailOpen}
+          hidden={desktopUtilitiesMode}
+          ariaHidden={desktopUtilitiesMode}
+          onClose={() => setThreadRailOpen(false)}
+        />
+
+        <main className="chat-column" hidden={desktopUtilitiesMode} aria-hidden={desktopUtilitiesMode}>
+          <ChatTranscript
+            sessionKey={state.selectedSessionKey}
+            detail={state.sessionDetail}
+            runMessages={runMessages}
+            connection={state.connection}
+          />
+          <ChatComposer
+            connected={state.connection === 'connected'}
+            activeRunId={activeRunId}
+            sessionKey={state.selectedSessionKey}
+            channel={state.channel}
+            chatId={state.chatId}
+            onSessionKeyChange={state.setSelectedSessionKey}
+            onChannelChange={state.setChannel}
+            onChatIdChange={state.setChatId}
+            onSend={handleSend}
+            onCancel={state.cancelRun}
+          />
+        </main>
+
+        <UtilityDrawer
+          open={drawerOpen}
+          expanded={drawerExpanded}
+          desktopTakeover={desktopUtilitiesMode}
+          panel={drawerPanel}
+          onPanelChange={setDrawerPanel}
+          onClose={closeDrawer}
+          onToggleExpanded={() => setDrawerExpanded((value) => !value)}
+          connection={state.connection}
+          reconnectDelayMs={state.reconnectDelayMs}
+          activeRuns={state.activeRuns}
+          queueDepth={state.queueDepth}
+          events={state.events}
+          status={state.status}
+          cronJobs={state.cronJobs}
+          heartbeat={state.heartbeat}
+          skills={state.skills}
+          config={state.config}
+          onRefreshAll={() => void state.refreshAll()}
+          onCreateCron={(payload) => void state.createCron(payload)}
+          onPatchCron={(id, payload) => void state.patchCron(id, payload)}
+          onRunCron={(id) => void state.runCron(id)}
+          onRemoveCron={(id) => void state.removeCron(id)}
+          onSaveHeartbeat={(content) => void state.saveHeartbeat(content)}
+          onTriggerHeartbeat={() => void state.triggerHeartbeat()}
+          onSaveSkills={(settings) => void state.saveSkills(settings)}
+          onSaveConfig={(nextConfig) => void state.saveConfig(nextConfig)}
+        />
+      </div>
+    </div>
   );
 }
 

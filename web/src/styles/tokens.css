@@ -1,0 +1,25 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Syne:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  color-scheme: dark;
+  --bg-0: #03070c;
+  --bg-1: #0a1018;
+  --bg-2: #111a27;
+  --glass: rgba(170, 203, 255, 0.11);
+  --glass-strong: rgba(169, 209, 255, 0.18);
+  --line: rgba(173, 212, 255, 0.22);
+  --line-strong: rgba(173, 212, 255, 0.46);
+  --text: #eef4ff;
+  --muted: #9fb3d1;
+  --accent: #9cd0ff;
+  --accent-strong: #d8eeff;
+  --success: #74f2bf;
+  --warning: #ffbf8a;
+  --danger: #ff8d9f;
+  --shadow-lg: 0 30px 80px rgba(0, 0, 0, 0.5);
+  --blur: blur(22px) saturate(140%);
+  --radius-lg: 24px;
+  --radius-md: 16px;
+  --radius-sm: 12px;
+  --content-max: 1900px;
+}

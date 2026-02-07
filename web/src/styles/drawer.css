@@ -1,0 +1,137 @@
+.utility-drawer {
+  width: 460px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.utility-drawer[hidden] {
+  display: none;
+}
+
+.utility-drawer.expanded {
+  width: 700px;
+}
+
+.utility-drawer.workspace {
+  width: 100%;
+  max-width: none;
+}
+
+.utility-drawer.workspace .drawer-head {
+  padding: 16px 18px 14px;
+}
+
+.utility-drawer.workspace .drawer-body {
+  grid-template-columns: 240px minmax(0, 1fr);
+}
+
+.utility-drawer.workspace .drawer-nav {
+  overflow: hidden;
+}
+
+.utility-drawer.workspace .drawer-content {
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px 18px 24px;
+}
+
+.drawer-head {
+  padding: 14px 14px 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  background: rgba(125, 171, 228, 0.07);
+}
+
+.drawer-head h2 {
+  margin: 2px 0 0;
+  font-size: 1.05rem;
+}
+
+.drawer-body {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 186px minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.drawer-nav {
+  border-right: 1px solid var(--line);
+  padding: 12px;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: rgba(18, 31, 47, 0.62);
+}
+
+.drawer-nav-label {
+  margin: 0 0 6px;
+  padding-left: 4px;
+}
+
+.drawer-nav-btn {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(146, 188, 244, 0.07);
+  color: var(--text);
+  text-align: left;
+  padding: 11px 10px;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.drawer-nav-btn:hover,
+.drawer-nav-btn:focus-visible {
+  border-color: var(--line-strong);
+  background: rgba(157, 199, 255, 0.15);
+  transform: translateX(1px);
+  box-shadow: inset 3px 0 0 rgba(188, 220, 255, 0.4);
+}
+
+.drawer-nav-btn.active {
+  border-color: rgba(197, 226, 255, 0.65);
+  background: linear-gradient(160deg, rgba(163, 207, 255, 0.22), rgba(104, 151, 214, 0.14));
+  box-shadow: inset 3px 0 0 rgba(204, 229, 255, 0.82);
+}
+
+.drawer-nav-title {
+  font-size: 0.92rem;
+  font-family: 'Syne', sans-serif;
+  line-height: 1.15;
+}
+
+.drawer-nav-detail {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
+.drawer-nav-btn.active .drawer-nav-detail {
+  color: #d8ecff;
+}
+
+.drawer-content {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 12px 12px 16px;
+  background: rgba(10, 19, 30, 0.35);
+}
+
+.drawer-panel {
+  display: none;
+}
+
+.drawer-panel.active {
+  display: block;
+}

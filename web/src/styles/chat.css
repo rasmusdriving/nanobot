@@ -1,0 +1,248 @@
+.thread-rail {
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.thread-rail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.thread-rail-head h2 {
+  margin: 2px 0 0;
+}
+
+.close-btn {
+  display: none;
+}
+
+.thread-rail-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.thread-list {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.thread-row {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  display: grid;
+  gap: 8px;
+  background: rgba(142, 186, 242, 0.06);
+}
+
+.thread-row.active,
+.thread-item.active {
+  border-color: var(--line-strong);
+  background: rgba(164, 204, 255, 0.18);
+}
+
+.thread-item {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--text);
+  text-align: left;
+  display: grid;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.thread-item span {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.chat-canvas {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.chat-head {
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.chat-head h1 {
+  margin: 2px 0 0;
+  font-size: 1.08rem;
+  word-break: break-all;
+}
+
+.chat-stream {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 18px 20px 28px;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.empty-state {
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  background: rgba(142, 186, 242, 0.06);
+}
+
+.empty-state h3 {
+  margin: 0 0 10px;
+}
+
+.empty-state p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.bubble {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 13px;
+  max-width: min(82%, 860px);
+  display: grid;
+  gap: 9px;
+  background: rgba(157, 199, 255, 0.11);
+}
+
+.bubble pre {
+  font-size: 0.9rem;
+}
+
+.bubble.user {
+  margin-left: auto;
+  background: linear-gradient(165deg, rgba(177, 210, 255, 0.2), rgba(130, 177, 236, 0.15));
+  border-color: var(--line-strong);
+}
+
+.bubble.assistant {
+  margin-right: auto;
+  background: linear-gradient(165deg, rgba(152, 194, 251, 0.13), rgba(95, 144, 210, 0.08));
+}
+
+.bubble-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pulse-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--accent-strong);
+  box-shadow: 0 0 0 0 rgba(216, 238, 255, 0.75);
+  animation: pulse 1.4s infinite;
+}
+
+.usage {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.tool-activity {
+  display: grid;
+  gap: 8px;
+}
+
+.tool-step {
+  border: 1px solid rgba(173, 212, 255, 0.28);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(156, 208, 255, 0.07);
+  display: grid;
+  gap: 6px;
+}
+
+.tool-step-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.tool-args,
+.tool-result {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.composer-shell {
+  border-top: 1px solid var(--line);
+  padding: 12px 14px 14px;
+  background: linear-gradient(180deg, rgba(11, 21, 34, 0.88), rgba(7, 16, 26, 0.94));
+  backdrop-filter: blur(16px);
+  box-shadow: 0 -12px 26px rgba(0, 0, 0, 0.24);
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+}
+
+.composer-form {
+  display: grid;
+  gap: 10px;
+}
+
+.composer-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-grid .full {
+  grid-column: 1 / -1;
+}
+
+.jump-row {
+  position: absolute;
+  bottom: 14px;
+  left: 18px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.jump-row .ghost-btn {
+  pointer-events: auto;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+
+.check-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+@keyframes pulse {
+  70% {
+    box-shadow: 0 0 0 10px rgba(216, 238, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(216, 238, 255, 0);
+  }
+}
